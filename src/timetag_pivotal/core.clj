@@ -5,12 +5,6 @@
    [clojure.data.json :as json]
    [clojure.java.io :as io]))
 
-(def pivotal-token "457413bf8b11103b57fa029cd23218d7")
-(def project-id "2078153")
-
-(def test-story-id "149215349")
-
-
 (defn read-csv [location]
   "reads csv from location"
   (with-open [reader (io/reader location)]
@@ -141,12 +135,13 @@
     :body data}))
 
 
+
 (defn pivotal-get-stories [pivotal]
   (pivotal-generic-get pivotal "stories"))
 
 (defn pivotal-get-project-story-ids [pivotal]
   (let [stories (pivotal-get-stories pivotal)]
-    (map (fn [story] (story "id")) stories)))
+    (map str (map (fn [story] (story "id")) stories))))
 
 (defn pivotal-add-comment [pivotal story-id text]
   (pivotal-generic-post
@@ -159,7 +154,7 @@
 
 
 (defn entries-process-story-entries [entries]
-  (let [total-time (int (map + (map entry-duration-divided-by-stories entries)))
+  (let [total-time (int (apply + (map entry-duration-divided-by-stories entries)))
         user-time (entry-group-time-worked
                    (group-by username-key entries)
                    (fn [res entry]
@@ -185,30 +180,69 @@
    {}
    entries))
 
-(defn entries-process-stories [entries]
-  (let [grouped (pivotal-project-group-by-story entries)]
-    (reduce
-     (fn [res key]
-       (let [story-entries (key grouped)]
-         (assoc res key (entries-group-by-story story-entries))))
-     {}
-     (keys grouped))))
+
     
 
 (defn pm-process-projects [pm]
+  "takes as input a map with the keys the different projects
+   and values the lists of different pivotalized entries of that project"
   (reduce
-   (fn [res key]
-     (let [entries (pm key)]
-       (assoc res key (entries-process-stories entries))))
+   (fn [res project]
+     (let [entries (pm project)]
+       (assoc res project (entries-group-by-story entries))))
    {}
    (keys pm)))
-          
+
+
+(defn create-pivotal-comment [total-time users-time]
+  (apply
+   str "Total time: " total-time "\n\n"
+   (map
+    (fn [user]
+      (let [time (users-time user)]
+        (str user ": " time " minutes\n")))
+    (keys users-time))))
+
+
+
+(defn process-results [processed pivotal]
+  (letfn [(process-result [m story-id]
+            (let [entries (get m story-id)
+                  val (entries-process-story-entries entries)
+                  total (:total-time val)
+                  users (:user-time val)]
+              (json/write-str {:pivotal story-id
+                               :total-time total
+                               :user-time users})))]
+    (let [existing-pivotals (pivotal-get-project-story-ids pivotal)
+          filtered-proc (select-keys processed existing-pivotals)]
+      (map
+       (fn [story-id]
+         (process-result filtered-proc story-id))
+       (keys filtered-proc)))))
         
+(def pivotal-token "457413bf8b11103b57fa029cd23218d7")
+(def project-map
+  {:kd4dm {:name "UCB KD4DM Release 2 -August" :pivotal "2088138"}})
 
-
-(defn process-project [csv-map project-name]
-  (let [project-entries (filter (fn [entry] (= (project-key entry) project-name)))
-        pivotalized (entries->pivotal-map project-entries)]
-    
-        ))
-
+(defn process-projects [csv-map project-map]
+  (letfn [(process-projects [project]
+            (let [project-settings (project-map project)
+                  project-name (:name project-settings)
+                  pivotal-id (:pivotal project-settings)
+                  pivotal-token (or (:pivotal-token project-settings) pivotal-token)
+                  project-entries (filter (fn [entry] (= (project-key entry) project-name)) csv-map)
+                  pivotalized (entries->pivotal-map project-entries)
+                  pivo (pivotal pivotal-token project-id)
+                  processed (pm-process-projects pivotalized)]
+              (reduce
+               (fn [res project]
+                 (let [results (get processed project)]
+                   (process-results results pivo)))
+               {}
+               (keys processed))))]
+    (reduce
+     (fn [res project-key]
+       (assoc res project-key (process-projects project-key)))
+     {}
+     project-map)))
