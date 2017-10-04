@@ -3,7 +3,8 @@
    [clojure.data.csv :as csv]
    [clj-http.client :as client]
    [clojure.data.json :as json]
-   [clojure.java.io :as io]))
+   [clojure.java.io :as io]
+   [timetag-pivotal.querying :as q]))
 
 (defn read-csv [location]
   "reads csv from location"
@@ -146,7 +147,7 @@
 (defn pivotal-add-comment [pivotal story-id text]
   (pivotal-generic-post
    pivotal
-   (str "stories/" test-story-id "/comments")
+   (str "stories/" story-id "/comments")
    (json/write-str {:text text})))
 
 
@@ -204,45 +205,95 @@
     (keys users-time))))
 
 
-
 (defn process-results [processed pivotal]
-  (letfn [(process-result [m story-id]
+  (letfn [(process-pivotal-result [m story-id]
             (let [entries (get m story-id)
                   val (entries-process-story-entries entries)
                   total (:total-time val)
                   users (:user-time val)]
-              (json/write-str {:pivotal story-id
-                               :total-time total
-                               :user-time users})))]
+              {:pivotal
+               story-id
+               :total-time total
+               :total-hours (/ total 60)
+               :user-time users}))]
     (let [existing-pivotals (pivotal-get-project-story-ids pivotal)
-          filtered-proc (select-keys processed existing-pivotals)]
-      (map
-       (fn [story-id]
-         (process-result filtered-proc story-id))
-       (keys filtered-proc)))))
+          filtered-proc (select-keys processed existing-pivotals)
+          no-pivotal (get processed :no-pivotal)] ;;we are missing wrongly written pivotals
+      {:pivotal
+       (map
+        (fn [story-id]
+          (process-pivotal-result filtered-proc story-id))
+        (keys filtered-proc))
+       :no-pivotal
+       (list (process-pivotal-result processed :no-pivotal))})))
         
 (def pivotal-token "457413bf8b11103b57fa029cd23218d7")
 (def project-map
-  {:kd4dm {:name "UCB KD4DM Release 2 -August" :pivotal "2088138"}})
+  {:kd4dm-august {:name "UCB KD4DM Release 2 -August" :pivotal "2088138"}
+   :kd4dm {:name "KD4DM r1.0" :pivotal "2088138"}})
 
 (defn process-projects [csv-map project-map]
-  (letfn [(process-projects [project]
+  (letfn [(process-projects-intern [project]
             (let [project-settings (project-map project)
                   project-name (:name project-settings)
                   pivotal-id (:pivotal project-settings)
                   pivotal-token (or (:pivotal-token project-settings) pivotal-token)
                   project-entries (filter (fn [entry] (= (project-key entry) project-name)) csv-map)
                   pivotalized (entries->pivotal-map project-entries)
-                  pivo (pivotal pivotal-token project-id)
+                  pivo (pivotal pivotal-token pivotal-id)
                   processed (pm-process-projects pivotalized)]
-              (reduce
-               (fn [res project]
-                 (let [results (get processed project)]
-                   (process-results results pivo)))
-               {}
-               (keys processed))))]
+              (first
+               (map
+                (fn [project]
+                  (let [results (get processed project)]
+                    (process-results results pivo)))
+                (keys processed)))))]
     (reduce
      (fn [res project-key]
-       (assoc res project-key (process-projects project-key)))
+       (assoc res project-key (process-projects-intern project-key)))
      {}
-     project-map)))
+     (keys project-map))))
+
+
+(defn generate-csv [writer results keys]
+  (let [header (map name keys)
+        result-keyed (map
+                      #(select-keys % (vec keys))
+                      results)]
+    (csv/write-csv
+     writer
+     (apply
+      vector
+      (vec header)
+      (map
+       (fn [res]
+         (vec (vals res)))
+       result-keyed)))))
+
+
+(defn generate-json-string [results]
+  (json/write-str
+   results
+   :key-fn name))
+
+(defn generate-json [results path]
+  (spit path (generate-json-string results) ))
+          
+
+
+(defn generate-csvs [results path]
+  (let [projects (keys results)]
+    (doall
+     (map (fn [key]
+            (with-open [writer (io/writer (str path "/" (name key)  ".csv"))]
+              (generate-csv writer (get results key) '(:pivotal :total-time))))
+          projects))))
+
+  
+(defn do-magic-stuff [input output]
+  (let [csv-map (csv-data->maps (read-csv input))
+        results (process-projects csv-map project-map)]
+    (generate-json results output)
+    results))
+        
+
