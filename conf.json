@@ -1,0 +1,19 @@
+{
+    "projects": {
+	"kd4dm-august": {
+	    "type": "pivotal",
+	    "name": "UCB KD4DM Release 2 -August",
+	    "pivotal": "2088138"
+	},
+	"kd4dm": {
+	    "type": "pivotal",
+	    "name": "KD4DM r1.0",
+	    "pivotal": "2088138"
+	},
+	"glpg": {
+	    "type": "trello",
+	    "name": "Galapagos MVP SOW 5",
+	    "board-id": "At0rd8L0"
+	}
+    }
+}

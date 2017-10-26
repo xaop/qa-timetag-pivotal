@@ -1,7 +1,7 @@
 (ns timetag-pivotal.core
   (:require
    [timetag-pivotal.main :as main]
-   [clojure.tools.cli :refer [parse-opts])
+   [clojure.tools.cli :refer [parse-opts]]
    (:gen-class)))
 
 
@@ -19,15 +19,19 @@
     (clojure.java.io/reader location)
     (java.io.BufferedReader. *in*)))
 
-(defn output-reader [location]
+(defn output-writer [location]
   (if location
-    (clojure.java.io.writer location)
+    (clojure.java.io/writer location)
     *out*))
 
   
 (defn -main [& args]
   (let [opts (parse-opts args cli-options)
-        input (input-reader (:input opts))
-        output (output-writer (:output opts))
-        results (doall (main/process-input input))]
-    results))
+        options (:options opts)
+        input (input-reader (:input options))
+        output (output-writer (:output options))]
+    (if (:help options)
+      (:summary opts)
+      (do
+        (doall (main/process-csv input output))
+        (System/exit 0)))))

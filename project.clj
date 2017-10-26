@@ -8,4 +8,5 @@
                  [org.clojure/tools.cli "0.3.5"]
                  [org.clojure/data.json "0.2.6"]
                  [clj-http "3.6.1"]
-                 ])
+                 ]
+  :main timetag-pivotal.core)

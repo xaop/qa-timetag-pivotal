@@ -107,12 +107,6 @@
   (flatten (vals pm)))
      
 
-;;pivotal integration
-
-
-
-
-
 (defn entries-process-story-entries [entries]
   (let [total-time (int (apply + (map entry-duration-divided-by-stories entries)))
         user-time (entry-group-time-worked
@@ -176,7 +170,8 @@
         
 (def project-map
   {:kd4dm-august {:type :pivotal :name "UCB KD4DM Release 2 -August" :pivotal "2088138"}
-   :kd4dm {:type :pivotal :name "KD4DM r1.0" :pivotal "2088138" }})
+   :kd4dm {:type :pivotal :name "KD4DM r1.0" :pivotal "2088138" }
+   :glpg {:type :trello :name "Galapagos MVP SOW 5" :board-id "At0rd8L0"}} )
 
 (defn process-projects [csv-map project-map]
   (letfn [(process-projects-intern [project]
@@ -225,10 +220,9 @@
    :key-fn name))
 
 (defn generate-json [results output]
-  (with-open [writer output]
-    (.write writer (generate-json-string results))))
-          
-
+  (let [data (doall (generate-json-string results))]
+    (with-open [writer output]
+      (.write writer data))))
 
 (defn generate-csvs [results path]
   (let [projects (keys results)]
@@ -238,11 +232,16 @@
               (generate-csv writer (get results key) '(:pivotal :total-time))))
           projects))))
 
+(defn read-config [location]
+  (json/read-str
+   (slurp location)
+   :key-fn keyword))
   
 (defn process-csv [input output]
-  (let [csv-map (csv-data->maps (read-csv input))
-        results (process-projects csv-map project-map)]
+  (let [csv-map (doall (csv-data->maps (read-csv input)))
+        config (read-config "conf.json")
+        project-map (:projects config)
+        results (doall (process-projects csv-map project-map))]
     (generate-json results output)
     results))
-        
 

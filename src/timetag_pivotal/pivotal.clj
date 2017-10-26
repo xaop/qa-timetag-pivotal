@@ -4,19 +4,16 @@
    [clojure.data.json :as json]
    [timetag-pivotal.storysource :as ss]))
 
-(def pivotal-base-url "https://www.pivotaltracker.com/services/v5/projects/") ;;"/" at the end is required
-(def pivotal-token "457413bf8b11103b57fa029cd23218d7")
+(def ^:const +pivotal-base-url+ "https://www.pivotaltracker.com/services/v5/projects/") ;;"/" at the end is required
+(def ^:const +pivotal-token+ "457413bf8b11103b57fa029cd23218d7")
 
-(declare verify-project-map-intern process-entries-intern)
+(declare pivotal-get-stories pivotal-story-id)
 (defrecord PivotalSource [api-token project-id base-url]
   ss/StorySource
-  (verify-project-map [pivotal pm]
-    (verify-project-map-intern pivotal pm))
-  (process-entries [pivotal entries story-id total-time user-time]
-    (process-entries-intern pivotal entries story-id total-time user-time))
-  (post-process-results [pivotal results]
-    results))
-
+  (get-stories [ss]
+    (pivotal-get-stories ss))
+  (get-story-id [ss story]
+    (pivotal-story-id story)))
 
 
 (defn pivotal-generic-get [pivotal request]
@@ -40,8 +37,6 @@
     {:x-trackertoken (:api-token pivotal)
      :content-type "application/json"}
     :body data}))
-
-
 
 (defn pivotal-get-stories [pivotal]
   (pivotal-generic-get pivotal "stories"))
@@ -69,16 +64,7 @@
         (str user ": " time " minutes\n")))
     (keys users-time))))
 
-(defn verify-project-map-intern [pivotal pm]
-  (let [ids (map pivotal-story-id  (:stories pivotal))]
-    (select-keys pm ids)))
-
-(defn process-entries-intern [pivotal entries story-id total-time user-time]
-  {:pivotal story-id
-   :total-time total-time
-   :total-hours (/ total-time 60)
-   :user-time user-time})
 
 (defn pivotal [entry]
-  (let [pivo (PivotalSource. (or (:api-token entry) pivotal-token) (:pivotal entry) pivotal-base-url)]
+  (let [pivo (PivotalSource. (or (:api-token entry) +pivotal-token+) (:pivotal entry) +pivotal-base-url+)]
     (assoc pivo :stories (pivotal-get-stories pivo))))
